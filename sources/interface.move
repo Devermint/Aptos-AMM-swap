@@ -8,8 +8,7 @@ module swap::interface {
     use aptos_std::comparator::{Self, Result};
     use aptos_std::type_info;
     use aptos_framework::fungible_asset::Metadata;
-    use aptos_framework::object::Object;
-
+    use aptos_framework::object::{Self, Object};
     use swap::controller;
     use swap::implements;
 
@@ -63,20 +62,29 @@ module swap::interface {
         y_val_min: u64
     ) {
         assert!(!controller::is_emergency(), ERR_EMERGENCY);
+        let (asset_a, asset_b, _) = implements::order_and_make_seed(&x_meta, &y_meta);
 
-        // Lazily create pool if missing.
-        if (!implements::is_pool_exists(x_meta, y_meta)) {
-            implements::register_pool(account, x_meta, y_meta);
+        // Align amounts and min amounts with canonical order
+        let (aligned_x_val, aligned_y_val, aligned_x_min, aligned_y_min) =
+            if (object::object_address(&asset_a) == object::object_address(&x_meta)) {
+                (x_val, y_val, x_val_min, y_val_min)
+            } else {
+                (y_val, x_val, y_val_min, x_val_min)
+            };
+
+        // Lazily create pool if missing
+        if (!implements::is_pool_exists(asset_a, asset_b)) {
+            implements::register_pool(account, asset_a, asset_b);
         };
 
-        let (optimal_x, optimal_y) =
-            implements::calc_optimal_coin_values(x_meta, y_meta, x_val, y_val);
-        assert!(optimal_x >= x_val_min, ERR_INSUFFICIENT_X_AMOUNT);
-        assert!(optimal_y >= y_val_min, ERR_INSUFFICIENT_Y_AMOUNT);
+        let (optimal_x, optimal_y) = implements::calc_optimal_coin_values(asset_a, asset_b, aligned_x_val, aligned_y_val);
 
-        // Pull funds (FA) from user and mint LP directly to user.
-        // (All FA transfers happen inside `implements::mint`.)
-        let _lp_minted = implements::mint(account, x_meta, y_meta, optimal_x, optimal_y);
+         // Check minimum amounts
+        assert!(optimal_x >= aligned_x_min, ERR_INSUFFICIENT_X_AMOUNT);
+        assert!(optimal_y >= aligned_y_min, ERR_INSUFFICIENT_Y_AMOUNT);
+
+        // Pull funds and mint LP directly to user
+        let _lp_minted = implements::mint(account, asset_a, asset_b, optimal_x, optimal_y);
     }
     // public entry fun add_liquidity<X, Y>(
     //     account: &signer,
@@ -128,12 +136,21 @@ module swap::interface {
         min_y_out_val: u64
     ) {
         assert!(!controller::is_emergency(), ERR_EMERGENCY);
+        let (asset_a, asset_b, _) = implements::order_and_make_seed(&x_meta, &y_meta);
 
-        let (x_out, y_out) = implements::burn(account, x_meta, y_meta, lp_val);
+        // Align amounts and min amounts with canonical order
+        let (aligned_x_out_val, aligned_y_out_val) =
+            if (object::object_address(&asset_a) == object::object_address(&x_meta)) {
+                (min_x_out_val, min_y_out_val)
+            } else {
+                (min_y_out_val, min_x_out_val)
+            };
+
+        let (x_out, y_out) = implements::burn(account, asset_a, asset_b, lp_val);
 
         // Min-out checks.
-        assert!(x_out >= min_x_out_val, ERR_COIN_OUT_NUM_LESS_THAN_EXPECTED_MINIMUM);
-        assert!(y_out >= min_y_out_val, ERR_COIN_OUT_NUM_LESS_THAN_EXPECTED_MINIMUM);
+        assert!(x_out >= aligned_x_out_val, ERR_COIN_OUT_NUM_LESS_THAN_EXPECTED_MINIMUM);
+        assert!(y_out >= aligned_y_out_val, ERR_COIN_OUT_NUM_LESS_THAN_EXPECTED_MINIMUM);
     }
     // public entry fun remove_liquidity<X, Y>(
     //     account: &signer,

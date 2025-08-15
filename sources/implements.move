@@ -363,11 +363,12 @@ module swap::implements {
     public fun get_reserves_size(
         x_meta: Object<Metadata>, y_meta: Object<Metadata>
     ): (u64, u64) acquires LiquidityPool, Config {
-        let pair_addr = get_pair_address(x_meta, y_meta);
+        let (asset_a, asset_b, _) = order_and_make_seed(&x_meta, &y_meta);
+        let pair_addr = get_pair_address(asset_a, asset_b);
 
         assert!(exists<LiquidityPool>(pair_addr), ERR_POOL_DOES_NOT_EXIST);
         let pool = borrow_global<LiquidityPool>(pair_addr);
-        assert_pool_order(pool, x_meta, y_meta);
+        assert_pool_order(pool, asset_a, asset_b);
         let x_reserve = primary_fungible_store::balance(pair_addr, pool.x_meta);
         let y_reserve = primary_fungible_store::balance(pair_addr, pool.y_meta);
 
@@ -667,6 +668,20 @@ module swap::implements {
 
         let fee_acc = fee_account();
         let fee_addr = signer::address_of(&fee_acc);
+
+         let user_addr = signer::address_of(user);
+
+        let ux_before = primary_fungible_store::balance(user_addr, in_meta);
+        let uy_before = primary_fungible_store::balance(user_addr, out_meta);
+
+        debug::print(&string::utf8(b"User balances before transfer:"));
+        debug::print(&ux_before);
+        debug::print(&uy_before);
+
+        debug::print(&string::utf8(b"swap fee, inmeta, coininvalue, :"));
+        debug::print(&fee_value);
+        debug::print(&in_meta);
+        debug::print(&coin_in_value);
 
         // Fee to fee account; net to pair account
         primary_fungible_store::transfer(user, in_meta, fee_addr, fee_value);
@@ -982,4 +997,13 @@ module swap::implements {
 
         event::initialize(&pool_account);
     }
+
+    #[test_only]
+    public fun get_lp_meta(
+        pair_addr: address,
+    ): Object<Metadata> acquires LiquidityPool {
+        let pool = borrow_global<LiquidityPool>(pair_addr);
+        pool.lp_meta
+    }
+
 }
