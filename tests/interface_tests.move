@@ -4,16 +4,15 @@
 module swap::interface_tests {
     use std::option;
     use std::signer;
-    use std::string::{Self, utf8};
+    use std::string::{utf8};
     use std::bcs;
-    use std::debug;
 
     use aptos_framework::account;
     use aptos_framework::genesis;
 
     use aptos_framework::object::{Self, Object};
     use aptos_framework::fungible_asset::{
-        Self, Metadata, FungibleAsset, MintRef, TransferRef
+        Self, Metadata, MintRef, TransferRef
     };
     use aptos_framework::primary_fungible_store;
 
@@ -73,7 +72,6 @@ module swap::interface_tests {
         fungible_asset::deposit_with_ref(xfer_ref, store, fa);
     }
 
-    // #[inline]
     fun bal(addr: address, meta: Object<Metadata>): u64 {
         primary_fungible_store::balance(addr, meta)
     }
@@ -437,7 +435,6 @@ fun test_add_liquidity_with_value(user: address) {
     ) {
         genesis::setup();
         let admin = account::create_account_for_test(@swap);
-        let admin_addr = signer::address_of(&admin);
         let user_account = account::create_account_for_test(user);
         let usdt_val = MAX_U64 / 20000;
         let xbtc_val = MAX_U64 / 20000;
@@ -457,7 +454,6 @@ fun test_add_liquidity_with_value(user: address) {
     ) {
         genesis::setup();
         let admin = account::create_account_for_test(@swap);
-        let admin_addr = signer::address_of(&admin);
         let user_account = account::create_account_for_test(user);
         let usdt_val = MAX_U64 / 20000;
         let xbtc_val = MAX_U64 / 20000;
@@ -546,6 +542,216 @@ fun test_add_liquidity_with_value(user: address) {
         interface::swap(&user_account, mx, mu, xbtc_val, 1);
         assert!(bal(user, mx) == expected_btc, bal(user, mx));
         assert!(bal(user, mu) == expected_usdt, bal(user, mu));
+    }
+
+    #[test]
+    fun test_add_liquidity_reverse_order_works() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+
+        let (x_meta, xm, xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y_meta, ym, yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        let ax = signer::address_of(&admin);
+
+        mint_to(x_meta, &xm, &xx, ax, 1_000_000);
+        mint_to(y_meta, &ym, &yx, ax, 2_000_000);
+
+        interface::initialize_swap(&admin, ax, ax);
+
+        // Intentionally pass metas reversed vs whatever ordering the pool will use.
+        interface::add_liquidity(&admin, y_meta, x_meta, 2_000_000, 1, 1_000_000, 1);
+
+        // Reserves must equal the amounts by *asset identity*, independent of call order.
+        let (rx, ry) = implements::get_reserves_size(x_meta, y_meta);
+        assert!(rx == 1_000_000, rx);
+        assert!(ry == 2_000_000, ry);
+    }
+
+    #[test, expected_failure(abort_code = 103)]
+    fun test_add_liquidity_min_x_too_high_aborts() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let (x,y) = {
+            let (xm, xmint, xxf) = mk_fa(&admin, b"X", b"X", 8);
+            let (ym, ymint, yxf) = mk_fa(&admin, b"Y", b"Y", 8);
+            let a = signer::address_of(&admin);
+            mint_to(xm,&xmint,&xxf,a,1_000_000);
+            mint_to(ym,&ymint,&yxf,a,1_000_000);
+            interface::initialize_swap(&admin,a,a);
+            (xm, ym)
+        };
+        // First add is exact, but force min higher than provided
+        interface::add_liquidity(&admin, x, y, 1_000_000, /*x_min*/1_000_001, 1_000_000, 1);
+    }
+
+    #[test, expected_failure(abort_code = 304)]
+    fun test_swap_min_out_too_high_aborts() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let a = signer::address_of(&admin);
+
+        let (x,xm,xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,ym,yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        mint_to(x,&xm,&xx,a,1_000_000);
+        mint_to(y,&ym,&yx,a,1_000_000);
+        interface::initialize_swap(&admin,a,a);
+        interface::add_liquidity(&admin, x, y, 1_000_000, 1, 1_000_000, 1);
+
+        // User needs funds to swap
+        mint_to(x,&xm,&xx,a,100_000);
+
+        // Ask for impossible min_out
+        interface::swap(&admin, x, y, 100_000, /*min_out*/ 200_000);
+    }
+
+    #[test]
+    fun test_add_liquidity_uses_optimal_amounts_only() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let addr = signer::address_of(&admin);
+
+        let (x,xm,xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,ym,yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        // Seed pool 1:2 ratio
+        mint_to(x,&xm,&xx,addr,100_000);
+        mint_to(y,&ym,&yx,addr,200_000);
+        interface::initialize_swap(&admin, addr, addr);
+        interface::add_liquidity(&admin, x, y, 100_000,1,200_000,1);
+
+        // Now try to add skewed: offer x=50k, y=200k; optimal y should be 100k, so 100k y leftover
+        mint_to(x,&xm,&xx,addr,50_000);
+        mint_to(y,&ym,&yx,addr,200_000);
+        let ux0 = bal(addr, x); let uy0 = bal(addr, y);
+        interface::add_liquidity(&admin, x, y, 50_000,1,200_000,1);
+        let ux1 = bal(addr, x); let uy1 = bal(addr, y);
+
+        assert!(ux0 - ux1 == 50_000, ux0 - ux1); // all X used
+        assert!(uy0 - uy1 == 100_000, uy0 - uy1); // only optimal Y used
+    }
+#[test]
+fun test_initial_lp_supply_matches_formula() {
+    genesis::setup();
+    let admin = account::create_account_for_test(@swap);
+    let addr = signer::address_of(&admin);
+
+    let (x, xm, xx) = mk_fa(&admin, b"X", b"X", 8);
+    let (y, ym, yx) = mk_fa(&admin, b"Y", b"Y", 8);
+    mint_to(x, &xm, &xx, addr, 90_000);
+    mint_to(y, &ym, &yx, addr, 160_000);
+
+    interface::initialize_swap(&admin, addr, addr);
+    interface::add_liquidity(&admin, x, y, 90_000, 1, 160_000, 1);
+
+    let pair = implements::get_pair_address(x, y);
+    let lp = implements::get_lp_meta(pair);
+    let supply_opt = fungible_asset::supply(lp);
+    let supply: u128 = if (supply_opt.is_some()) { supply_opt.extract() } else { 0 };
+
+    let user_lp: u64 = primary_fungible_store::balance(addr, lp);
+    let user_lp_u128: u128 = user_lp as u128;
+
+    let expected: u128 = (math::sqrt(90_000) * math::sqrt(160_000) - 1000) as u128;
+
+    assert!(user_lp_u128 == expected, 1);
+    assert!(supply == expected, 2);
+}
+
+
+
+    #[test]
+    fun test_swap_fee_goes_to_fee_account() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let addr = signer::address_of(&admin);
+
+        let (x,xm,xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,ym,yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        mint_to(x,&xm,&xx,addr,1_000_000);
+        mint_to(y,&ym,&yx,addr,1_000_000);
+        interface::initialize_swap(&admin, addr, addr);
+        interface::add_liquidity(&admin, x, y, 1_000_000, 1, 1_000_000, 1);
+
+        // Fund user and do a swap
+        mint_to(x,&xm,&xx,addr,100_000);
+        let fee_addr = implements::get_fee_address();
+        let f0 = primary_fungible_store::balance(fee_addr, x);
+
+        interface::swap(&admin, x, y, 100_000, 1);
+
+        let f1 = primary_fungible_store::balance(fee_addr, x);
+        // 0.06% of 100_000 = 60
+        assert!(f1 - f0 == 60, f1 - f0);
+    }
+
+
+    #[test, expected_failure] // FA raises EINSUFFICIENT_BALANCE
+    fun test_remove_liquidity_more_than_balance_aborts() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let addr = signer::address_of(&admin);
+        let (x,xm,xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,ym,yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        mint_to(x,&xm,&xx,addr,100_000);
+        mint_to(y,&ym,&yx,addr,100_000);
+        interface::initialize_swap(&admin, addr, addr);
+        interface::add_liquidity(&admin, x, y, 100_000,1,100_000,1);
+
+        let pair = implements::get_pair_address(x, y);
+        let lp = implements::get_lp_meta(pair);
+        let user_lp = primary_fungible_store::balance(addr, lp);
+
+        interface::remove_liquidity(&admin, x, y, user_lp + 1, 1, 1);
+    }
+
+    #[test]
+    fun test_swap_increases_k() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let addr = signer::address_of(&admin);
+        let (x,xm,xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,ym,yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        mint_to(x,&xm,&xx,addr,1_000_000);
+        mint_to(y,&ym,&yx,addr,1_000_000);
+        interface::initialize_swap(&admin, addr, addr);
+        interface::add_liquidity(&admin, x, y, 1_000_000,1,1_000_000,1);
+
+        let (rin0, rout0) = implements::get_reserves_size(x, y);
+        // fund and swap
+        mint_to(x,&xm,&xx,addr,100_000);
+        interface::swap(&admin, x, y, 100_000, 1);
+        let (rin1, rout1) = implements::get_reserves_size(x, y);
+        assert!((rin0 as u128) * (rout0 as u128) < (rin1 as u128) * (rout1 as u128), 0);
+    }
+
+    #[test]
+    fun test_get_reserves_size_is_order_agnostic() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let addr = signer::address_of(&admin);
+        let (x,xm,xx) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,ym,yx) = mk_fa(&admin, b"Y", b"Y", 8);
+        let x_val = 10000;
+        let y_val = 20000;
+
+        mint_to(x,&xm,&xx,addr, x_val);
+        mint_to(y,&ym,&yx,addr, y_val);
+        interface::initialize_swap(&admin, addr, addr);
+        interface::add_liquidity(&admin, x, y, x_val,1,y_val,1);
+
+        let (rxy0, rxy1) = implements::get_reserves_size(x, y);
+        let (ryx0, ryx1) = implements::get_reserves_size(y, x);
+        assert!(rxy0 == ryx0 && rxy1 == ryx1, rxy0);
+    }
+    #[test, expected_failure(abort_code = 300)]
+    fun test_register_pool_twice_aborts() {
+        genesis::setup();
+        let admin = account::create_account_for_test(@swap);
+        let addr = signer::address_of(&admin);
+        let (x,_,_) = mk_fa(&admin, b"X", b"X", 8);
+        let (y,_,_) = mk_fa(&admin, b"Y", b"Y", 8);
+        interface::initialize_swap(&admin, addr, addr);
+        interface::register_pool(&admin, x, y);
+        interface::register_pool(&admin, x, y); // should abort
     }
 
 }
