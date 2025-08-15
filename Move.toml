@@ -10,7 +10,7 @@ rev = 'main'
 subdir = 'aptos-move/framework/aptos-framework'
 
 [addresses]
-swap = "0x42856603bb9e2dfdbda264cab66ed7f9fa5096b953c201bce8fed9068bf24c20"
+swap = "0xf63d44bb4564c8ccd96916b2800b4fab2917d61f79faa6bfd9d14c2c19d4bf2f"
 
 #[dependencies.lp]
 #local = "./lp"
