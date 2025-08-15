@@ -10,4 +10,4 @@ rev = "main"
 subdir = "aptos-move/framework/move-stdlib"
 
 [addresses]
-lp = "0xee14bdd3f34bf95a01a63dc4efbfb0a072aa1bc8ee6e4d763659a811a9a28b21"
+lp = "0x091d9739d38da9ac1a50aa64c07ff70f62fc46850c3f9a5b44f6adfcb7c76a9b"

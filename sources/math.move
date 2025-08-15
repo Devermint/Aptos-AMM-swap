@@ -31,9 +31,7 @@ module swap::math {
     ///
     /// math::sqrt(8 * 1000000) => 2828; // same as above, 2828 / 1000 (2.828)
     /// ```
-    public fun sqrt(
-        x: u64
-    ): u64 {
+    public fun sqrt(x: u64): u64 {
         let bit = 1u128 << 64;
         let res = 0u128;
         let x = (x as u128);
@@ -52,11 +50,7 @@ module swap::math {
     }
 
     /// Implements: `x` * `y` / `z`.
-    public fun mul_div(
-        x: u64,
-        y: u64,
-        z: u64
-    ): u64 {
+    public fun mul_div(x: u64, y: u64, z: u64): u64 {
         assert!(z != 0, ERR_DIVIDE_BY_ZERO);
         let r = (x as u128) * (y as u128) / (z as u128);
         assert!(!(r > (U64_MAX as u128)), ERR_U64_OVERFLOW);
@@ -64,11 +58,7 @@ module swap::math {
     }
 
     /// Implements: `x` * `y` / `z`.
-    public fun mul_div_u128(
-        x: u128,
-        y: u128,
-        z: u128
-    ): u64 {
+    public fun mul_div_u128(x: u128, y: u128, z: u128): u64 {
         assert!(z != 0, ERR_DIVIDE_BY_ZERO);
         let r = x * y / z;
         assert!(!(r > (U64_MAX as u128)), ERR_U64_OVERFLOW);

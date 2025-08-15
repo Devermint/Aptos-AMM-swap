@@ -1,17 +1,16 @@
 // Copyright 2022 OmniBTC Authors. Licensed under Apache-2.0 License.
+// Modifications copyright 2025 Devermint
 module swap::controller {
     use std::signer;
     use swap::implements::controller;
 
-    struct Emergency has key {}
+    public struct Emergency has key {}
 
     const ERR_NO_PERMISSIONS: u64 = 200;
     const ERR_ALREADY_PAUSE: u64 = 201;
     const ERR_NOT_PAUSE: u64 = 202;
 
-    public entry fun pause(
-        account: &signer
-    ) {
+    public entry fun pause(account: &signer) {
         let controller = controller();
 
         assert!(!exists<Emergency>(controller), ERR_ALREADY_PAUSE);
@@ -20,9 +19,7 @@ module swap::controller {
         move_to(account, Emergency {});
     }
 
-    public entry fun resume(
-        account: &signer
-    ) acquires Emergency {
+    public entry fun resume(account: &signer) acquires Emergency {
         let controller = controller();
 
         assert!(exists<Emergency>(controller), ERR_NOT_PAUSE);

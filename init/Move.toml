@@ -10,4 +10,4 @@ rev = 'main'
 subdir = 'aptos-move/framework/aptos-framework'
 
 [addresses]
-swap = "0xf5bb1482c28e3c600edf4cac9a10511b3d9a8e162d5b64d9741e2a8cb086bb50"
+swap = "0x42856603bb9e2dfdbda264cab66ed7f9fa5096b953c201bce8fed9068bf24c20"

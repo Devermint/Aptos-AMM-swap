@@ -15,7 +15,11 @@ module swap::math_tests {
 
     #[test]
     fun test_mul_div_u128() {
-        let a = swap::math::mul_div_u128((MAX_u64 as u128), (MAX_u64 as u128), (MAX_u64 as u128));
+        let a = swap::math::mul_div_u128(
+            (MAX_u64 as u128),
+            (MAX_u64 as u128),
+            (MAX_u64 as u128)
+        );
         assert!(a == MAX_u64, 0);
 
         a = swap::math::mul_div_u128(100, 20, 100);
@@ -62,5 +66,4 @@ module swap::math_tests {
         s = swap::math::sqrt(18446744073709551615);
         assert!(s == 4294967295, 5);
     }
-
 }
