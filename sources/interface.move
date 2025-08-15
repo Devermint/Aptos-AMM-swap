@@ -78,8 +78,7 @@ module swap::interface {
         // (All FA transfers happen inside `implements::mint`.)
         let _lp_minted = implements::mint(account, x_meta, y_meta, optimal_x, optimal_y);
     }
-    // public entry fun add_liquidity<X, Y
->(
+    // public entry fun add_liquidity<X, Y>(
     //     account: &signer,
     //     coin_x_val: u64,
     //     coin_x_val_min: u64,
@@ -136,8 +135,7 @@ module swap::interface {
         assert!(x_out >= min_x_out_val, ERR_COIN_OUT_NUM_LESS_THAN_EXPECTED_MINIMUM);
         assert!(y_out >= min_y_out_val, ERR_COIN_OUT_NUM_LESS_THAN_EXPECTED_MINIMUM);
     }
-    // public entry fun remove_liquidity<X, Y
->(
+    // public entry fun remove_liquidity<X, Y>(
     //     account: &signer,
     //     lp_val: u64,
     //     min_x_out_val: u64,

@@ -3,6 +3,7 @@
 module swap::implements {
     use std::option;
     use std::signer;
+    use std::debug;
     use std::string::{Self, String};
     use aptos_framework::object::{Self, Object};
     use aptos_framework::fungible_asset::{
@@ -41,6 +42,7 @@ module swap::implements {
     const ERR_INCORRECT_SWAP: u64 = 313;
     const ERR_POOL_FULL: u64 = 314;
     const ERR_DEPRECATED_FUNCTION: u64 = 315;
+    const ERR_TOKEN_ORDER_MISMATCH: u64 = 316;
 
     const SYMBOL_PREFIX_LENGTH: u64 = 4;
     const FEE_MULTIPLIER: u64 = 30;
@@ -365,7 +367,7 @@ module swap::implements {
 
         assert!(exists<LiquidityPool>(pair_addr), ERR_POOL_DOES_NOT_EXIST);
         let pool = borrow_global<LiquidityPool>(pair_addr);
-
+        assert_pool_order(pool, x_meta, y_meta);
         let x_reserve = primary_fungible_store::balance(pair_addr, pool.x_meta);
         let y_reserve = primary_fungible_store::balance(pair_addr, pool.y_meta);
 
@@ -395,6 +397,7 @@ module swap::implements {
         assert!(exists<LiquidityPool>(pair_addr), ERR_POOL_DOES_NOT_EXIST);
 
         let pool = borrow_global_mut<LiquidityPool>(pair_addr);
+        assert_pool_order(pool, x_meta, y_meta);
         let auth = borrow_global<LpAuth>(object::object_address(&pool.lp_meta));
 
         // 1) PRE-READ RESERVES
@@ -402,6 +405,17 @@ module swap::implements {
         let ry_before = primary_fungible_store::balance(pair_addr, pool.y_meta);
 
         // 2) MOVE USER FUNDS -> PAIR PRIMARY STORES
+        let user_addr = signer::address_of(user);
+
+        let ux_before = primary_fungible_store::balance(user_addr, pool.x_meta);
+        let uy_before = primary_fungible_store::balance(user_addr, pool.y_meta);
+
+        debug::print(&string::utf8(b"User balances before mint:"));
+        debug::print(&ux_before);
+        debug::print(&uy_before);
+                debug::print(&string::utf8(b"Minting:"));
+        debug::print(&x_in);
+        debug::print(&y_in);
         primary_fungible_store::transfer(user, pool.x_meta, pair_addr, x_in);
         primary_fungible_store::transfer(user, pool.y_meta, pair_addr, y_in);
 
@@ -505,6 +519,7 @@ module swap::implements {
         assert!(exists<LiquidityPool>(pair_addr), ERR_POOL_DOES_NOT_EXIST);
 
         let pool = borrow_global_mut<LiquidityPool>(pair_addr);
+        assert_pool_order(pool, x_meta, y_meta);
         let auth = borrow_global<LpAuth>(object::object_address(&pool.lp_meta));
 
         let rx = primary_fungible_store::balance(pair_addr, pool.x_meta);
@@ -879,6 +894,7 @@ module swap::implements {
 
         // 2) Load reserves
         let pool = borrow_global<LiquidityPool>(pair_addr);
+        assert_pool_order(pool, x_meta, y_meta);
         let reserves_x = primary_fungible_store::balance(pair_addr, pool.x_meta);
         let reserves_y = primary_fungible_store::balance(pair_addr, pool.y_meta);
 
@@ -897,7 +913,6 @@ module swap::implements {
         }
     }
     /// Orders two FA metadata objects deterministically and return
-s:
     /// - (asset_a, asset_b) in sorted order
     /// - seed vector<u8> for resource account derivation: b"swap:" || addr_a || b":" || addr_b
     public fun order_and_make_seed(
@@ -937,8 +952,19 @@ s:
         let (asset_a, asset_b, seed) = order_and_make_seed(&x_meta, &y_meta);
         account::create_resource_address(&admin_addr, seed)
     }
-    #[test_onl
-y]
+    fun assert_pool_order(
+        pool: &LiquidityPool,
+        x_meta: Object<Metadata>,
+        y_meta: Object<Metadata>
+    ) {
+        assert!(
+            object::object_address(&pool.x_meta) == object::object_address(&x_meta) &&
+            object::object_address(&pool.y_meta) == object::object_address(&y_meta),
+            ERR_TOKEN_ORDER_MISMATCH
+        );
+    }
+
+    #[test_only]
     public fun initialize_swap_for_test(
         swap_admin: &signer,
         controller: address,
